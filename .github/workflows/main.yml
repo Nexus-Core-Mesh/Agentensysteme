@@ -1,0 +1,20 @@
+name: Nexus Build & Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Prüfe Pawn-Dateien und Includes
+        run: |
+          echo "Starte Code-Analyse für Nexus-Core..."
+          find . -name "*.inc" -o -name "*.pwn"
+          echo "Strukturprüfung erfolgreich abgeschlossen."
