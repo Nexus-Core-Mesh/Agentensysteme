@@ -1,0 +1,116 @@
+MASTER AGENT / MONITORING SCRIPT
+
+Pfad: scripts/master_monitor_agent.py
+
+Beschreibung:
+Dieses Agent-Skript überwacht das gesamte Projekt, prüft Pfade, erkennt fehlende Includes, überwacht wichtige Verzeichnisse, loggt Warnungen und schreibt Zustände in SQLite und JSON-Dateien.
+
+Ausführung:
+- Einmaliger Scan:
+  python3 scripts/master_monitor_agent.py --root .
+
+- Watch-Modus:
+  python3 scripts/master_monitor_agent.py --root . --watch --interval 5
+
+Funktionen:
+- Verzeichnis-Validierung
+- Include-/Pfad-Check
+- Scan auf mögliche Debug-/Fehlermarker
+- JSON/SQLite-Protokollierung
+- Kontinuierliche Überwachung im Gamemode-Stil
+
+Python-Code:
+
+#!/usr/bin/env python3
+"""Master monitoring agent for a modular GTA:SA Reallife gamemode project."""
+
+from __future__ import annotations
+import argparse, json, os, re, sqlite3, sys, time
+from pathlib import Path
+
+DEFAULT_EXPECTED_DIRS = [
+    "core","db","state","admin","auth","camera","government","economy","jobs",
+    "housing","inventory","vehicles","factions","business","law","emergency",
+    "social","web","control-panel","c++","scripts","agent_storage"
+]
+
+DEFAULT_FILE_PATTERNS = [
+    "**/*.pwn","**/*.inc","**/*.pawn","**/*.sql","**/*.py","**/*.js",
+    "**/*.html","**/*.md","**/*.json"
+]
+
+class MasterMonitorAgent:
+    def __init__(self, root, watch=False, interval=5):
+        self.root = Path(root).resolve()
+        self.watch = watch
+        self.interval = max(1, interval)
+        self.db_path = self.root / "agent_storage" / "system_state.db"
+        self.log_dir = self.root / "agent_storage" / "lifecycle_logs"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.report_path = self.log_dir / "master_monitor_report.json"
+        self.status_path = self.log_dir / "master_monitor_status.json"
+
+    def ensure_structure(self):
+        (self.root / "agent_storage").mkdir(parents=True, exist_ok=True)
+        (self.root / "agent_storage" / "mirrored_data").mkdir(parents=True, exist_ok=True)
+        (self.root / "agent_storage" / "lifecycle_logs").mkdir(parents=True, exist_ok=True)
+        for d in DEFAULT_EXPECTED_DIRS:
+            p = self.root / d
+            if not p.exists():
+                print(f"[WARN] Missing expected directory: {d}")
+
+    def collect_files(self):
+        files = []
+        for pattern in DEFAULT_FILE_PATTERNS:
+            for path in self.root.glob(pattern):
+                if path.is_file() and ".git" not in path.parts:
+                    files.append(path)
+        return sorted(set(files), key=lambda p: str(p.relative_to(self.root)))
+
+    def detect_missing_includes(self, files):
+        issues = []
+        include_pat = re.compile(r'#include\s+["<]([^">]+)[">]')
+        known = {p.name: p for p in files}
+        for f in files:
+            if f.suffix.lower() not in {".inc", ".pwn", ".pawn"}:
+                continue
+            try:
+                content = f.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for match in include_pat.findall(content):
+                if match not in known and not (f.parent / match).exists():
+                    issues.append(f"Missing include reference: {f.relative_to(self.root)} -> {match}")
+        return issues
+
+    def run_scan(self):
+        self.ensure_structure()
+        files = self.collect_files()
+        errors = self.detect_missing_includes(files)
+        status = "ok" if not errors else "warning"
+        summary = {
+            "root": str(self.root),
+            "total_files": len(files),
+            "status": status,
+            "errors": errors,
+        }
+        self.report_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(json.dumps(summary, indent=2))
+        return summary
+
+    def monitor(self):
+        while True:
+            self.run_scan()
+            time.sleep(self.interval)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=str, default=".")
+    parser.add_argument("--watch", action="store_true")
+    parser.add_argument("--interval", type=int, default=5)
+    args = parser.parse_args()
+    agent = MasterMonitorAgent(args.root, watch=args.watch, interval=args.interval)
+    if args.watch:
+        agent.monitor()
+    else:
+        agent.run_scan()

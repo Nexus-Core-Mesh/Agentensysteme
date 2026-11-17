@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.log
+agent_storage/**/*.db
+agent_storage/**/*.json
+agent_storage/**/*.log

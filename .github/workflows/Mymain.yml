@@ -21,31 +21,29 @@ jobs:
 
       - name: Dependencies installieren
         run: |
+          python -m pip install --upgrade pip
           pip install httpx aiosqlite
 
       - name: Master Agent Initialisierung & Sub-Agent Spawn
         run: |
-          python -c '
+          python - <<'PY'
           import os
-          # 1. Ordnerstruktur für Sub-Agenten und Daten erstellen
           os.makedirs("agent_storage/mirrored_data", exist_ok=True)
           os.makedirs("agent_storage/lifecycle_logs", exist_ok=True)
+          os.makedirs("scripts", exist_ok=True)
           print("[MASTER AGENT] Ordnerstruktur erfolgreich initialisiert.")
           print("[MASTER AGENT] Sub-Agent 1 (Mirror) und Sub-Agent 2 (Lifecycle) gespawnt.")
           print("[MASTER AGENT] Schalte um auf reinen Scanner-Modus...")
-          '
+          PY
 
       - name: Scanner-Modus Ausführen
         run: |
-          python -c '
-          print("[SCANNER AGENT] Scanne Repository und Logs auf Integrität...")
-          # Hier greift der Scanner und prüft den Zustand
-          '
+          python scripts/scan_nexus_system.py
 
       - name: Commit und Push der Agenten-Zustände
         run: |
           git config --global user.name "Nexus-Core-Agent"
           git config --global user.email "agent@nexus-core.local"
-          git add agent_storage/
+          git add agent_storage/ scripts/scan_nexus_system.py
           git commit -m "🤖 Master-Agent: Struktur initialisiert und Scanner-Modus aktiv" || echo "Keine Änderungen"
           git push
